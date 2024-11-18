@@ -5,8 +5,5 @@
   "dependencies" : [ {
     "name" : "sdl2",
     "version>=" : "2.30.6#2"
-  }, {
-    "name" : "spdlog",
-    "version>=" : "1.15.0"
   } ]
 }

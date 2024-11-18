@@ -1,9 +1,7 @@
 #include <mmdeviceapi.h>
 
-#include <spdlog/spdlog.h>
 #include <SDL.h>
-
-
+#include <vector>
 
 struct WaveOutExtraData {
     SDL_AudioDeviceID devID;
@@ -28,8 +26,6 @@ using CallbackFormat = void CALLBACK(
 #define WAVEOUTOPEN
 FAKE(MMRESULT, __stdcall, waveOutOpen, _Inout_updates_bytes_(cbwh)  LPHWAVEOUT phwo, _In_ UINT uDeviceID, _Inout_updates_bytes_(cbwh) LPCWAVEFORMATEX pwfx, _In_ DWORD_PTR dwCallback, _In_ DWORD_PTR dwInstance, _In_ DWORD fdwOpen)
 {
-    //spdlog::debug("Calling waveOutOpen");
-    OutputDebugString("Calling waveOutOpen");
     SDL_AudioDeviceID dev;
     SDL_AudioSpec want, have;
     SDL_zero(want);
@@ -53,8 +49,13 @@ FAKE(MMRESULT, __stdcall, waveOutOpen, _Inout_updates_bytes_(cbwh)  LPHWAVEOUT p
         .bytesPerSec = pwfx->nSamplesPerSec * pwfx->nChannels * bytesPerSec
     };
 
+
     want.freq = pwfx->nSamplesPerSec;
     want.channels = pwfx->nChannels;
+
+    static char tmp[512];
+    sprintf(tmp, "Calling waveOutOpen with bytesPerSec: %d, freq: %d, channels: %d", result->bytesPerSec, want.freq, want.channels);
+    OutputDebugString(tmp);
 
     want.callback = nullptr;//(SDL_AudioCallback)dwCallback;
 
@@ -79,16 +80,18 @@ FAKE(MMRESULT, __stdcall, waveOutOpen, _Inout_updates_bytes_(cbwh)  LPHWAVEOUT p
 #define WAVEOUTWRITE
 FAKE(MMRESULT, __stdcall, waveOutWrite, _In_ HWAVEOUT hwo,_Inout_updates_bytes_(cbwh) LPWAVEHDR pwh, UINT cbwh)
 {
-    //spdlog::debug("Calling waveOutWrite");
-    //OutputDebugString("Calling waveOutWrite");
     auto data = (WaveOutExtraData*)hwo;
 
-    if (data->sdlBuffer.size() < pwh->dwBufferLength) {
-        data->sdlBuffer.resize(pwh->dwBufferLength);
-    }
+    auto oldSize = data->sdlBuffer.size();
+    // if (data->sdlBuffer.size() < pwh->dwBufferLength) {
+        data->sdlBuffer.resize(oldSize + pwh->dwBufferLength);
+    // }
 
-    memcpy(data->sdlBuffer.data(), pwh->lpData, pwh->dwBufferLength);
-    data->sdlBufferUsed = 0;
+    memcpy(data->sdlBuffer.data() + oldSize, pwh->lpData, pwh->dwBufferLength);
+
+    static char tmp[512];
+    // sprintf(tmp, "Calling waveOutWrite with length %d and buffer %p", pwh->dwBufferLength, pwh->lpData);
+    // OutputDebugString(tmp);
 
     return MMSYSERR_NOERROR;
 }
@@ -97,9 +100,6 @@ FAKE(MMRESULT, __stdcall, waveOutWrite, _In_ HWAVEOUT hwo,_Inout_updates_bytes_(
 #define WAVEOUTGETPOSITION
 FAKE(MMRESULT, __stdcall, waveOutGetPosition, _In_ HWAVEOUT hwo,_Inout_updates_bytes_(cbwh) LPMMTIME pmmt, UINT cbmmt)
 {
-    //spdlog::debug("Calling waveOutGetPosition");
-
-
     //OutputDebugString(" Calling waveOutGetPosition ");
 
     auto data = (WaveOutExtraData*)hwo;
@@ -114,6 +114,10 @@ FAKE(MMRESULT, __stdcall, waveOutGetPosition, _In_ HWAVEOUT hwo,_Inout_updates_b
     pmmt->wType = TIME_BYTES;
     pmmt->u.cb = data->bytesToDate;
 
+    // static char tmp[512];
+    // sprintf(tmp, "Calling waveOutGetPosition, answer is %d bytes", pmmt->u.cb);
+    // OutputDebugString(tmp);
+
     auto queued = SDL_GetQueuedAudioSize(data->devID);
 
     constexpr auto DataToWrite = 256;
@@ -121,9 +125,8 @@ FAKE(MMRESULT, __stdcall, waveOutGetPosition, _In_ HWAVEOUT hwo,_Inout_updates_b
 #undef min
         auto dataToRead = std::min((int)(data->sdlBuffer.size() - data->sdlBufferUsed), DataToWrite);
 
-        static char tmp[512];
-        sprintf(tmp, "sdlBuffer: %p, sdlBufferUser: %d, dataToRead: %d",data->sdlBuffer.data(), data->sdlBufferUsed, dataToRead);
-        //OutputDebugString(tmp);
+        // sprintf(tmp, "sdlBuffer: %p, sdlBufferUser: %d, dataToRead: %d", data->sdlBuffer.data(), data->sdlBufferUsed, dataToRead);
+        // OutputDebugString(tmp);
 
         SDL_QueueAudio(data->devID, data->sdlBuffer.data() + data->sdlBufferUsed, dataToRead);
         // fprintf(stderr, "Q: %d\n", queued);
@@ -138,6 +141,10 @@ FAKE(MMRESULT, __stdcall, waveOutGetPosition, _In_ HWAVEOUT hwo,_Inout_updates_b
             castedCallback(hwo, WOM_DONE, data->dwInstance, reinterpret_cast<DWORD_PTR>(&hdr), 0);
 
             auto dataToRead = std::min((int)(data->sdlBuffer.size() - data->sdlBufferUsed), DataToWrite);
+
+            // sprintf(tmp, "REMAIN sdlBuffer: %p, sdlBufferUser: %d, dataToRead: %d",data->sdlBuffer.data(), data->sdlBufferUsed, dataToRead);
+            // OutputDebugString(tmp);
+
             SDL_QueueAudio(data->devID, data->sdlBuffer.data() + data->sdlBufferUsed, dataToRead);
 
             data->sdlBufferUsed += dataToRead;
@@ -152,7 +159,6 @@ FAKE(MMRESULT, __stdcall, waveOutGetPosition, _In_ HWAVEOUT hwo,_Inout_updates_b
 #define WAVEOUTPAUSE
 FAKE(MMRESULT, __stdcall, waveOutPause, _In_ HWAVEOUT hwo)
 {
-    //spdlog::debug("Calling waveOutPause");
     OutputDebugString("Calling waveOutPause");
     auto data = (WaveOutExtraData*)hwo;
 
@@ -165,7 +171,6 @@ FAKE(MMRESULT, __stdcall, waveOutPause, _In_ HWAVEOUT hwo)
 #define WAVEOUTPREPAREHEADER
 FAKE(MMRESULT, __stdcall, waveOutPrepareHeader, _In_ HWAVEOUT hwo,_Inout_updates_bytes_(cbwh) LPWAVEHDR pwh, UINT cbwh)
 {
-    spdlog::debug("Calling waveOutPrepareHeader");
     //OutputDebugString("Calling waveOutPrepareHeader");
     auto data = (WaveOutExtraData*)hwo;
     return MMSYSERR_NOERROR;
@@ -175,9 +180,16 @@ FAKE(MMRESULT, __stdcall, waveOutPrepareHeader, _In_ HWAVEOUT hwo,_Inout_updates
 #define WAVEOUTRESET
 FAKE(MMRESULT, __stdcall, waveOutReset, _In_ HWAVEOUT hwo)
 {
-    //spdlog::debug("Calling waveOutReset");
     OutputDebugString("Calling waveOutReset");
     auto data = (WaveOutExtraData*)hwo;
+
+    SDL_PauseAudioDevice(data->devID, 1);
+    SDL_ClearQueuedAudio(data->devID);
+
+    data->sdlBuffer.clear();
+    data->bytesToDate = 0;
+    data->sdlBufferUsed = 0;
+
     return MMSYSERR_NOERROR;
 }
 
@@ -185,11 +197,11 @@ FAKE(MMRESULT, __stdcall, waveOutReset, _In_ HWAVEOUT hwo)
 #define WAVEOUTRESTART
 FAKE(MMRESULT, __stdcall, waveOutRestart, _In_ HWAVEOUT hwo)
 {
-    spdlog::debug("Calling waveOutRestart");
     OutputDebugString("Calling waveOutRestart");
     auto data = (WaveOutExtraData*)hwo;
 
     SDL_PauseAudioDevice(data->devID, 0);
+    data->sdlBufferUsed = 0;
 
     return MMSYSERR_NOERROR;
 }
@@ -198,8 +210,7 @@ FAKE(MMRESULT, __stdcall, waveOutRestart, _In_ HWAVEOUT hwo)
 #define WAVEOUTUNPREPAREHEADER
 FAKE(MMRESULT, __stdcall, waveOutUnprepareHeader, _In_ HWAVEOUT hwo, _Inout_updates_bytes_(cbwh) LPWAVEHDR pwh, UINT cbwh)
 {
-    //spdlog::debug("Calling waveOutUnprepareHeader");
-    OutputDebugString("Calling waveOutUnprepareHeader");
+    // OutputDebugString("Calling waveOutUnprepareHeader");
     auto data = (WaveOutExtraData*)hwo;
     return MMSYSERR_NOERROR;
 }
@@ -207,7 +218,6 @@ FAKE(MMRESULT, __stdcall, waveOutUnprepareHeader, _In_ HWAVEOUT hwo, _Inout_upda
 
 #define WAVEOUTCLOSE
 FAKE(MMRESULT, __stdcall, waveOutClose, _In_ HWAVEOUT hwo) {
-    //spdlog::debug("Calling waveOutClose");
     OutputDebugString("Calling waveOutClose");
 
     auto data = (WaveOutExtraData*)hwo;
@@ -220,4 +230,3 @@ FAKE(MMRESULT, __stdcall, waveOutClose, _In_ HWAVEOUT hwo) {
 
     return MMSYSERR_NOERROR;
 }
-

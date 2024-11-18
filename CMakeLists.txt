@@ -5,7 +5,6 @@ PROJECT(winmm)
 ENABLE_LANGUAGE(C CXX)
 
 find_package(SDL2 CONFIG REQUIRED)
-find_package(spdlog CONFIG REQUIRED)
 
 ADD_LIBRARY(winmm SHARED
 		src/winmm.cpp
@@ -18,5 +17,4 @@ target_link_libraries(winmm
 		PRIVATE
 		$<TARGET_NAME_IF_EXISTS:SDL2::SDL2main>
 		$<IF:$<TARGET_EXISTS:SDL2::SDL2>,SDL2::SDL2,SDL2::SDL2-static>
-		spdlog::spdlog
 )

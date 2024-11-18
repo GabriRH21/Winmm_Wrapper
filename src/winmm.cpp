@@ -995,6 +995,10 @@ extern DECLSPEC void SDLCALL SDL_Quit(void);
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
   mHinst = hinstDLL;
   if (fdwReason == DLL_PROCESS_ATTACH) {
+#ifdef _DEBUG
+    debug = fopen("./debug.log", "a");
+#endif
+
     mHinstDLL = LoadLibrary("real_winmm.dll");
     if (!mHinstDLL) {
       return FALSE;
@@ -1010,9 +1014,6 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
     }
 
     _hook_setup();
-#ifdef _DEBUG
-    debug = fopen("./debug.log", "a");
-#endif
   } else if (fdwReason == DLL_PROCESS_DETACH) {
     SDL_Quit();
 #ifdef _DEBUG
